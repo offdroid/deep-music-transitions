@@ -48,9 +48,17 @@ class Spectrogram(object):
                            hop_length=self.hop_length)
 
     def __call__(self, sample):
-        if self.is_inverse and self.log2:
-            return torch.pow(2, self.transform(sample))
-        elif self.log2:
-            return torch.log2(self.transform(sample))
+        x = sample
+        if self.is_inverse:
+            if self.log2:
+                x = torch.pow(2, x)
+            if self.type == 'complex':
+                x = torch.view_as_real(x)
+            x = self.transform(x)
         else:
-            return self.transform(sample)
+            x = self.transform(x)
+            if self.type == 'complex':
+                x = torch.view_as_complex(x)
+            if self.log2:
+                x = torch.log2(x)
+        return x
