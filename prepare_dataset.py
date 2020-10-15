@@ -4,6 +4,7 @@ import os
 import numpy as np
 import torch
 import torchaudio
+from spectrogram import Spectrogram
 
 
 def is_audio_file(name):
@@ -20,20 +21,18 @@ def save(data, path, **kwargs):
         np.save(path, s)
 
 
-def process(f, idx, output_dir, segment_length, segment_spacing, trim=0, transform=None, one_file=False,
+def process(f, idx, output_dir, segment_length, segment_spacing, sample_rate, trim=0, transform=None, one_file=False,
             progress: Progress = None, total=None, pt=True):
     if progress is not None:
-        task = progress.add_task(f'{os.path.split(f)[-1]} ({idx + 1}/{total})',
-                                 start=False)
+        task = progress.add_task(f'{os.path.split(f)[-1]} ({idx + 1}/{total})', start=False)
     waveform, sr = torchaudio.load(f)
     # Take the first channel if more than one
     waveform = waveform[0, :].to(device)
-    if sr != args.sample_rate:
-        waveform = torchaudio.transforms.Resample(sr,
-                                                  args.sample_rate)(waveform)
+    if sr != sample_rate:
+        waveform = torchaudio.transforms.Resample(sr, sample_rate)(waveform)
 
     # Convert ms values to absolute number of samples
-    srps = args.sample_rate // 1000  # Sample rate per second
+    srps = sample_rate // 1000  # Sample rate per second
     segment_length *= srps
     segment_spacing *= srps
     if not isinstance(trim, tuple):
@@ -122,6 +121,9 @@ if __name__ == '__main__':
                         default=False,
                         action='store_true',
                         help='Store all snippets of a file in one file')
+    parser.add_argument('--as_spectrogram',
+                        default=None,
+                        help='Transform the waveform into either a `real` or `complex` spectrogram')
 
     args = parser.parse_args()
     device = 'cpu' if args.cpu or torch.cuda.is_available() else 'cuda'
@@ -141,7 +143,10 @@ if __name__ == '__main__':
         print("No files found")
         exit(0)
 
+    transform = Spectrogram(space=args.as_spectrogram, log2=True,
+                            length=args.segment_length * args.sample_rate // 1000) \
+        if args.as_spectrogram is not None else None
     with Progress() as progress:
         for idx, f in enumerate(files):
-            process(f, idx, args.output_dir, args.segment_length, args.segment_spacing, args.trim,
-                    one_file=args.one_file, pt=args.pt, total=len(files), progress=progress)
+            process(f, idx, args.output_dir, args.segment_length, args.segment_spacing, args.sample_rate, args.trim,
+                    transform=transform, one_file=args.one_file, pt=args.pt, total=len(files), progress=progress)
